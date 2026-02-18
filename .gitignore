@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+.venv/
+env/
+
+# Solver outputs (not tracked; regenerate with main.py)
+results/
+
+# Decay preprocessor outputs (not tracked; regenerate with run_preprocessor.py)
+decay_curve.csv
+decay_fit.png

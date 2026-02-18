@@ -1,0 +1,18 @@
+# Example isotope inventory for the decay heat preprocessor.
+# Columns:
+#   Isotope — nuclide name matching the chain XML (e.g. "Co60", "Cs137")
+#   Atoms   — number of atoms at t = 0
+#
+# Generate this file from your reactor physics output or fuel cycle code.
+# Run the preprocessor with:
+#   python -m decay_preprocessor.run_preprocessor \
+#       --inventory examples/example_inventory.csv \
+#       --chain path/to/chain.xml \
+#       --sample-mass 100.0
+Isotope,Atoms
+Cs137,1.20e+20
+Cs134,3.50e+19
+Sr90,8.50e+19
+Y90,8.50e+19
+Co60,2.30e+18
+Ba137_m1,1.10e+18

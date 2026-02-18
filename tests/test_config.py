@@ -1,0 +1,81 @@
+"""Tests for the configuration loader."""
+
+import numpy as np
+import pytest
+from src.config_loader import load_config
+
+
+@pytest.fixture
+def cfg():
+    return load_config()
+
+
+@pytest.fixture
+def waste_form(cfg):
+    return cfg["waste_form"]
+
+
+def test_load_returns_waste_form(cfg):
+    """Config must contain a single 'waste_form' dict."""
+    assert "waste_form" in cfg
+
+
+def test_waste_form_keys(waste_form):
+    """waste_form must have rho_base, decay, cp, k."""
+    assert "rho_base" in waste_form
+    assert callable(waste_form["decay"]), "decay must be callable"
+    assert callable(waste_form["cp"]), "cp must be callable"
+    assert callable(waste_form["k"]), "k must be callable"
+
+
+def test_waste_form_name(cfg):
+    """waste_form_name must be a non-empty string."""
+    assert "waste_form_name" in cfg
+    assert isinstance(cfg["waste_form_name"], str)
+    assert len(cfg["waste_form_name"]) > 0
+
+
+def test_decay_at_zero(waste_form):
+    """
+    Default config decay_terms: [100.0, 5.0], [20.0, 0.5], [2.0, 0.05]
+    decay(0) = 100 + 20 + 2 = 122.0 W/kg
+    """
+    result = waste_form["decay"](0.0)
+    assert pytest.approx(result, rel=1e-6) == 122.0
+
+
+def test_cp_polynomial(waste_form):
+    """
+    Default cp_poly: [500.0, 0.5, 0.0]  =>  cp(300) = 500 + 0.5*300 = 650.0
+    """
+    expected = 500.0 + 0.5 * 300.0 + 0.0 * 300.0**2
+    assert pytest.approx(waste_form["cp"](300.0), rel=1e-6) == expected
+
+
+def test_k_polynomial(waste_form):
+    """
+    Default k_poly: [2.0, -1e-3, 0.0]  =>  k(300) = 2.0 - 0.3 = 1.7
+    """
+    expected = 2.0 + (-1e-3) * 300.0 + 0.0 * 300.0**2
+    assert pytest.approx(waste_form["k"](300.0), rel=1e-6) == expected
+
+
+def test_decay_monotonically_decreasing(waste_form):
+    """Decay heat must decrease over time."""
+    t = np.linspace(0, 100, 50)
+    Q = [waste_form["decay"](ti) for ti in t]
+    assert all(Q[i] >= Q[i + 1] for i in range(len(Q) - 1)), \
+        "Decay heat is not monotonically decreasing"
+
+
+def test_config_has_required_keys(cfg):
+    """Config must contain all expected top-level keys."""
+    required = [
+        "waste_form_name", "waste_form",
+        "centerline_limit_C", "safety_factor", "surface_limits_C",
+        "ambient_temp_C", "h_passive", "radii_min", "radii_max",
+        "radii_steps", "loadings_pct", "nodes", "max_years",
+        "cooling_months",
+    ]
+    for key in required:
+        assert key in cfg, f"Missing config key: {key}"
