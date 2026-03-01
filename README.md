@@ -11,7 +11,7 @@ Given a canister geometry and waste loading, it produces:
 Results are swept over a range of canister radii and waste loading fractions and
 output as a CSV and stacked design-envelope plot.
 
-See [**QUICKSTART.md**](QUICKSTART.md) for the 3-step setup guide.
+See [**QUICKSTART.md**](docs/QUICKSTART.md) for the 3-step setup guide.
 
 ---
 
@@ -53,7 +53,7 @@ Output is written to `results/` by default.
 | `decay_preprocessor/preprocessor_config.yaml` | **You** — only if using the decay preprocessor |
 | `examples/` | Reference input files |
 | `data/` | Bundled decay chain data (do not edit) |
-| `src/` | Solver internals (do not edit) |
+| `thermal_envelope/` | Solver internals (do not edit) |
 | `decay_preprocessor/` | Preprocessor internals (do not edit) |
 | `tests/` | Test suite (do not edit) |
 
