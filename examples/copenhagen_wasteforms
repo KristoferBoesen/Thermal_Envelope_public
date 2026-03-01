@@ -1,0 +1,28 @@
+# ==================================================================================
+# Copenhagen Atomics specific wasteform and decay properties.
+# 
+# To use: copy one of the blocks and replace wasteform in solver_config.yaml
+# ==================================================================================
+
+
+
+# Recycling / Optimistic scenario
+waste_form:
+  rho_base: 2321.5                          # Base glass density [kg/m³]
+  decay_terms:
+    - [982.77, 24.18]
+    - [733.59,  3.88]
+    - [ 44.57,  0.02]
+  cp: "483.6 + 0.8683*T + -1.399e-7*T**2"      # Specific heat [J/(kg·K)]
+  k:  "1.655 + -5.016e-4*T + 1.815e-7*T**2"    # Thermal conductivity [W/(m·K)]  
+  
+
+# Accident / Pessimistic scenario
+waste_form:
+  rho_base: 3052.8
+  decay_terms:
+    - [39.31, 5.82]
+    - [13.52, 1.06]
+    - [ 1.96, 0.02]
+  cp: "492.7 + 0.8083*T + -2.368e-4*T**2"
+  k:  "2.997 + -2.339e-3*T + 1.349e-6*T**2"
