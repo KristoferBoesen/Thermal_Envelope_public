@@ -64,11 +64,6 @@ Or, if installed with `pip install -e .`:
 thermal-envelope --repo Bentonite
 ```
 
-Or on Windows, double-click (or run from a terminal):
-
-```bat
-run.bat --repo Bentonite
-```
 
 Results (CSV + plot) appear in `results/`.
 
