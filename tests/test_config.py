@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from src.config_loader import load_config
+from thermal_envelope.config_loader import load_config, _make_expression
 
 
 @pytest.fixture
@@ -46,17 +46,17 @@ def test_decay_at_zero(waste_form):
 
 def test_cp_polynomial(waste_form):
     """
-    Default cp_poly: [500.0, 0.5, 0.0]  =>  cp(300) = 500 + 0.5*300 = 650.0
+    Default cp: "500.0 + 0.5*T"  =>  cp(300) = 500 + 0.5*300 = 650.0
     """
-    expected = 500.0 + 0.5 * 300.0 + 0.0 * 300.0**2
+    expected = 500.0 + 0.5 * 300.0
     assert pytest.approx(waste_form["cp"](300.0), rel=1e-6) == expected
 
 
 def test_k_polynomial(waste_form):
     """
-    Default k_poly: [2.0, -1e-3, 0.0]  =>  k(300) = 2.0 - 0.3 = 1.7
+    Default k: "2.0 - 1.0e-3*T"  =>  k(300) = 2.0 - 0.3 = 1.7
     """
-    expected = 2.0 + (-1e-3) * 300.0 + 0.0 * 300.0**2
+    expected = 2.0 - 1e-3 * 300.0
     assert pytest.approx(waste_form["k"](300.0), rel=1e-6) == expected
 
 
@@ -79,3 +79,55 @@ def test_config_has_required_keys(cfg):
     ]
     for key in required:
         assert key in cfg, f"Missing config key: {key}"
+
+
+# --- _make_expression unit tests ---
+
+
+def test_make_expression_constant():
+    """Constant string returns a fixed value regardless of T."""
+    f = _make_expression("500.0")
+    assert pytest.approx(f(300.0), rel=1e-9) == 500.0
+    assert pytest.approx(f(1000.0), rel=1e-9) == 500.0
+
+
+def test_make_expression_constant_vectorised():
+    """Constant expression returns 500.0 for all elements of a vectorised input."""
+    f = _make_expression("500.0")
+    T = np.array([300.0, 400.0, 500.0])
+    result = f(T)
+    np.testing.assert_allclose(np.broadcast_to(result, T.shape), 500.0)
+
+
+def test_make_expression_linear():
+    """Linear expression evaluates correctly at a scalar temperature."""
+    f = _make_expression("500.0 + 0.5*T")
+    assert pytest.approx(f(300.0), rel=1e-9) == 650.0
+
+
+def test_make_expression_power_law():
+    """Power-law expression matches direct numpy evaluation."""
+    f = _make_expression("200.0 * T**0.35")
+    T = 400.0
+    assert pytest.approx(f(T), rel=1e-9) == 200.0 * T**0.35
+
+
+def test_make_expression_numpy_function():
+    """Expressions using np.* functions evaluate correctly."""
+    f = _make_expression("np.sqrt(T)")
+    assert pytest.approx(f(100.0), rel=1e-9) == 10.0
+
+
+def test_make_expression_piecewise_inline():
+    """np.interp piecewise expression interpolates correctly."""
+    f = _make_expression("np.interp(T, [300, 500], [450, 550])")
+    assert pytest.approx(f(400.0), rel=1e-9) == 500.0
+
+
+def test_make_expression_vectorised_input():
+    """Linear expression returns an ndarray when given an ndarray."""
+    f = _make_expression("500.0 + 0.5*T")
+    T = np.array([200.0, 300.0, 400.0])
+    result = f(T)
+    assert isinstance(result, np.ndarray)
+    np.testing.assert_allclose(result, [600.0, 650.0, 700.0])

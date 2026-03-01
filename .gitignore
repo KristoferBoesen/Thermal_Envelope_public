@@ -15,3 +15,5 @@ results/
 # Decay preprocessor outputs (not tracked; regenerate with run_preprocessor.py)
 decay_curve.csv
 decay_fit.png
+
+CLAUDE.md

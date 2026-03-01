@@ -11,6 +11,8 @@ Given a canister geometry and waste loading, it produces:
 Results are swept over a range of canister radii and waste loading fractions and
 output as a CSV and stacked design-envelope plot.
 
+See [**QUICKSTART.md**](QUICKSTART.md) for the 3-step setup guide.
+
 ---
 
 ## Installation
@@ -43,9 +45,23 @@ Output is written to `results/` by default.
 
 ---
 
+## File layout
+
+| Path | Who edits it |
+|------|-------------|
+| `solver_config.yaml` | **You** — all thermal solver settings |
+| `decay_preprocessor/preprocessor_config.yaml` | **You** — only if using the decay preprocessor |
+| `examples/` | Reference input files |
+| `data/` | Bundled decay chain data (do not edit) |
+| `src/` | Solver internals (do not edit) |
+| `decay_preprocessor/` | Preprocessor internals (do not edit) |
+| `tests/` | Test suite (do not edit) |
+
+---
+
 ## Configuration
 
-All parameters are set in `config.yaml`. Key sections:
+All parameters are set in `solver_config.yaml`. Key sections:
 
 | Section | Description |
 |---------|-------------|
@@ -77,12 +93,15 @@ parameters automatically.
 The `decay_preprocessor/` tool converts a full isotope inventory into fitted
 decay heat parameters. Run it **once** before using the thermal solver.
 
+Edit `decay_preprocessor/preprocessor_config.yaml` to set your inventory path,
+sample mass, and chain file, then run:
+
 ```bash
-python -m decay_preprocessor.run_preprocessor \
-    --inventory examples/example_inventory.csv \
-    --chain path/to/chain.xml \
-    --sample-mass 100.0 \
-    --duration 10.0
+# Zero-flag run (uses preprocessor_config.yaml entirely):
+python -m decay_preprocessor.run_preprocessor
+
+# Auto-write fitted terms directly into solver_config.yaml:
+python -m decay_preprocessor.run_preprocessor --update-config
 ```
 
 See [`decay_preprocessor/README.md`](decay_preprocessor/README.md) for full

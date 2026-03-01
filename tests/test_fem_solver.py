@@ -1,13 +1,13 @@
 """Tests for the transient FEM solver.
 
 Uses simple inline material properties (constant k, cp; single-term decay)
-so these tests are independent of config.yaml content.
+so these tests are independent of solver_config.yaml content.
 """
 
 import numpy as np
 import pytest
-from src.constants import KELVIN_OFFSET
-from src.physics.fem_solver import WasteForm
+from thermal_envelope.constants import KELVIN_OFFSET
+from thermal_envelope.physics.fem_solver import WasteForm
 
 # --- Inline properties for testing (no config dependency) ---
 

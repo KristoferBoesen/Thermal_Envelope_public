@@ -3,7 +3,7 @@ CLI entry point for the Thermal Envelope Design Tool.
 
 Usage examples::
 
-    # Run with defaults from config.yaml
+    # Run with defaults from solver_config.yaml
     python main.py
 
     # Specify repository geology
@@ -20,13 +20,13 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from src.config_loader import load_config
-from src.analysis.pipeline import run_design_envelope
-from src.analysis.plotting import plot_design_envelope
+from thermal_envelope.config_loader import load_config
+from thermal_envelope.analysis.pipeline import run_design_envelope
+from thermal_envelope.analysis.plotting import plot_design_envelope
 
 
 def parse_args(cfg: dict, argv=None) -> argparse.Namespace:
-    """Build argument parser with defaults drawn from config.yaml."""
+    """Build argument parser with defaults drawn from solver_config.yaml."""
     repo_choices = list(cfg["surface_limits_C"].keys())
 
     parser = argparse.ArgumentParser(

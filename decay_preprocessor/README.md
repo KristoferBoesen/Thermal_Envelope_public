@@ -1,7 +1,7 @@
 # Decay Heat Preprocessor
 
 A standalone preprocessing tool that converts a full isotope inventory into
-fitted decay heat parameters for use in `config.yaml`.
+fitted decay heat parameters for use in `solver_config.yaml`.
 
 Run this tool **once** before using the thermal envelope solver whenever you
 have a new isotope inventory. The thermal solver itself only needs the fitted
@@ -14,7 +14,7 @@ exponential coefficients.
 1. **Parses** an OpenMC-format decay chain XML file (no OpenMC installation required)
 2. **Solves** the full Bateman decay chain equations using a stiff BDF integrator
 3. **Fits** a sum-of-exponentials `Q(t) = Σ Aᵢ · exp(−λᵢ · t)` to the result
-4. **Outputs** the fitted parameters formatted for direct paste into `config.yaml`,
+4. **Outputs** the fitted parameters formatted for direct paste into `solver_config.yaml`,
    along with a diagnostic plot and R² quality metric
 
 ---
@@ -36,10 +36,37 @@ python -m decay_preprocessor.run_preprocessor \
 |------|----------|-------------|
 | `--inventory` | Yes | Path to isotope inventory CSV |
 | `--chain` | Yes | Path to decay chain XML file |
-| `--sample-mass` | Yes | Total sample mass [kg] |
+| `--sample-mass` | Yes | Mass of the **waste material only** [kg] — see note below |
 | `--duration` | No | Simulation duration in years (default: 10.0) |
 | `--n-terms` | No | Fixed number of exponential terms (default: auto 3–6) |
 | `--output-dir` | No | Output directory (default: current directory) |
+
+---
+
+---
+
+## Critical: what mass to use for `--sample-mass`
+
+The thermal solver converts the fitted decay heat from W/kg to W/m³ using:
+
+```
+Q_vol = decay(t) [W/kg_waste] × eff_density [kg/m³] × loading_fraction
+```
+
+So `decay(t)` **must be normalised per kilogram of pure waste material** (not
+per kg of the glass composite, and not an arbitrary value like 1.0 kg).
+
+**Use:** the total mass of the isotopes in your inventory — i.e. the mass of
+the waste oxide that was characterised.
+
+| What you pass | Result |
+|---|---|
+| Mass of waste oxide in the sample ✓ | Correct W/kg — solver gives right temperatures |
+| Mass of entire canister (glass + waste) | Decay too small by `loading_fraction` — Q_vol off by `loading_fraction²`, temperatures wrong |
+| 1.0 (arbitrary) | Results scaled by wrong constant — silent error |
+
+There is no warning if you get this wrong. The solver will run and produce
+plausible-looking numbers that are systematically incorrect.
 
 ---
 
@@ -79,7 +106,7 @@ downloaded from the [OpenMC data repository](https://openmc.org/nuclear-data/).
 
 ## Output
 
-- **Console**: fitted parameters formatted as YAML, ready to paste into `config.yaml`
+- **Console**: fitted parameters formatted as YAML, ready to paste into `solver_config.yaml`
 - **`decay_curve.csv`**: full Bateman solution (Time_Years, Heat_Watts, Specific_Power_W_kg)
 - **`decay_fit.png`**: diagnostic plot comparing the Bateman solution to the fitted curve
 
@@ -99,7 +126,7 @@ Fit quality:  R² = 0.99998421
 Terms fitted: 4
 ============================================================
 
-Paste the following into config.yaml under 'waste_form':
+Paste the following into solver_config.yaml under 'waste_form':
 
   decay_terms:
     - [982.77, 24.18]

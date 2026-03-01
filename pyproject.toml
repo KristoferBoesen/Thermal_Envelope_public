@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "thermal-envelope"
+version = "0.1.0"
+description = "Thermal design envelope for vitrified nuclear waste canisters"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+thermal-envelope   = "main:main"
+decay-preprocessor = "decay_preprocessor.run_preprocessor:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["thermal_envelope*", "decay_preprocessor*"]

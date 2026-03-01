@@ -1,16 +1,17 @@
 """
-Sum-of-exponentials fitter for decay heat curves.
+Triple-exponential fitter for decay heat curves.
 
 Fits the model:
 
-    Q(t) = Σᵢ  Aᵢ · exp(−λᵢ · t)
+    Q(t) = A1·exp(−λ1·t) + A2·exp(−λ2·t) + A3·exp(−λ3·t)
 
-to a sampled decay heat curve using log-weighted (relative-error) residuals,
-so that early-time high-power and late-time low-power behaviour are captured
-with equal fractional accuracy.
+to a sampled decay heat curve using linear-space (absolute) residuals.
+The first month of data is excluded to avoid fitting the early short-lived
+transient, which is not relevant for canister cooling schedules on the scale
+of years.
 
 The fitted ``[Amplitude, DecayConstant]`` pairs (Amplitudes in W/kg, decay
-constants in yr⁻¹) can be pasted directly into ``config.yaml``.
+constants in yr⁻¹) can be pasted directly into ``solver_config.yaml``.
 """
 
 import numpy as np
@@ -20,28 +21,30 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 
-def _decay_model(t: np.ndarray, *params) -> np.ndarray:
+def _triple_exp(
+    t: np.ndarray,
+    a: float, b: float,
+    c: float, d: float,
+    e: float, f: float,
+) -> np.ndarray:
     """
-    Sum-of-exponentials decay model.
+    Three-term sum-of-exponentials decay model.
 
     Parameters
     ----------
     t : np.ndarray
         Time values [years].
-    *params : float
-        Interleaved ``[A1, λ1, A2, λ2, ...]`` where Aᵢ is the amplitude
-        [W/kg] and λᵢ is the decay constant [yr⁻¹].
+    a, c, e : float
+        Amplitudes [W/kg].
+    b, d, f : float
+        Decay constants [yr⁻¹].
 
     Returns
     -------
     np.ndarray
         Specific decay power [W/kg].
     """
-    n = len(params) // 2
-    result = np.zeros_like(t, dtype=float)
-    for i in range(n):
-        result += params[2 * i] * np.exp(-params[2 * i + 1] * t)
-    return result
+    return a * np.exp(-b * t) + c * np.exp(-d * t) + e * np.exp(-f * t)
 
 
 def _r_squared(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -54,21 +57,17 @@ def _r_squared(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 def fit_decay_curve(
     time_years: np.ndarray,
     specific_power_W_kg: np.ndarray,
-    n_terms: Optional[int] = None,
-    min_r2: float = 0.9999,
-    max_terms: int = 6,
-) -> Tuple[List[List[float]], float]:
+    cutoff_years: float = 1.0 / 12.0,
+) -> Tuple[List[List[float]], float, float]:
     """
-    Fit a sum-of-exponentials to a specific-power vs time curve.
+    Fit a three-term sum-of-exponentials to a specific-power vs time curve.
 
-    Fitting is performed with ``sigma = specific_power_W_kg`` (relative
-    weighting), which is equivalent to minimising the mean squared relative
-    error.  This ensures the fit is accurate across the full dynamic range of
-    the decay curve rather than being dominated by the early-time peak.
+    Data points before ``cutoff_years`` are excluded to discard the early
+    short-lived transient (dominated by nuclides with half-lives of days to
+    weeks) that does not govern long-term canister cooling behaviour.
 
-    If ``n_terms`` is not specified, the function automatically tries
-    3, 4, 5 … up to ``max_terms`` terms and returns the first fit that
-    achieves ``min_r2``.
+    Fitting uses linear-space (absolute) residuals so that the curve is
+    optimised for accuracy across the physically relevant power range.
 
     Parameters
     ----------
@@ -76,88 +75,50 @@ def fit_decay_curve(
         Evaluation times [years].  Must be positive and strictly increasing.
     specific_power_W_kg : np.ndarray
         Specific decay power [W/kg].
-    n_terms : int, optional
-        Fixed number of exponential terms.  If ``None``, auto-selected.
-    min_r2 : float
-        Minimum acceptable R² for automatic term selection (default: 0.9999).
-    max_terms : int
-        Maximum number of terms to attempt when auto-selecting (default: 6).
+    cutoff_years : float
+        Discard data before this time [years] (default: 1/12 ≈ 1 month).
 
     Returns
     -------
     terms : list of [Amplitude, DecayConstant]
-        Fitted parameters.  Amplitudes [W/kg] and decay constants [yr⁻¹]
-        ready to paste into ``config.yaml`` as ``decay_terms``.
+        Three fitted pairs.  Amplitudes [W/kg] and decay constants [yr⁻¹]
+        ready to paste into ``solver_config.yaml`` as ``decay_terms``.
     r2 : float
-        Coefficient of determination on the raw (non-log) data.
+        Coefficient of determination on the retained (post-cutoff) data.
+    rmse : float
+        Root-mean-square error [W/kg] on the retained (post-cutoff) data.
 
     Raises
     ------
     RuntimeError
-        If ``curve_fit`` fails to converge for all attempted term counts.
+        If ``curve_fit`` fails to converge.
     """
     t = np.asarray(time_years, dtype=float)
     Q = np.asarray(specific_power_W_kg, dtype=float)
 
-    # Drop non-positive values (undefined in log-weighted residuals)
-    mask = Q > 0.0
+    mask = t >= cutoff_years
     t, Q = t[mask], Q[mask]
 
-    Q0 = Q[0]
-    t_min, t_max = t[0], t[-1]
+    p0 = [Q[0], 1.0, Q[0], 0.1, Q[0], 0.01]
 
-    term_range = [n_terms] if n_terms is not None else range(3, max_terms + 1)
-
-    best_params: Optional[np.ndarray] = None
-    best_r2 = -np.inf
-
-    for n in term_range:
-        # Initial guesses: amplitudes share Q(0) equally; decay constants
-        # are log-spaced to span the full observable time range.
-        lam_guesses = np.geomspace(max(1.0 / t_max, 1e-4), 1.0 / t_min, n)
-        p0 = []
-        for lam_g in lam_guesses:
-            p0 += [Q0 / n, float(lam_g)]
-
-        bounds_lower = [0.0] * (2 * n)
-        bounds_upper = [np.inf] * (2 * n)
-
-        try:
-            popt, _ = curve_fit(
-                _decay_model,
-                t,
-                Q,
-                p0=p0,
-                bounds=(bounds_lower, bounds_upper),
-                sigma=Q,            # relative (log-space equivalent) weighting
-                absolute_sigma=False,
-                maxfev=100_000,
-            )
-        except RuntimeError:
-            continue
-
-        Q_fit = _decay_model(t, *popt)
-        r2 = _r_squared(Q, Q_fit)
-
-        if r2 > best_r2:
-            best_r2 = r2
-            best_params = popt
-
-        if r2 >= min_r2:
-            break
-
-    if best_params is None:
+    try:
+        popt, _ = curve_fit(_triple_exp, t, Q, p0=p0, maxfev=50000)
+    except RuntimeError as exc:
         raise RuntimeError(
-            "Sum-of-exponentials fitting failed to converge.  "
-            "Try increasing --n-terms or check the input data."
-        )
+            "Triple-exponential fitting failed to converge.  "
+            "Check the input data or increase maxfev."
+        ) from exc
 
-    n_best = len(best_params) // 2
+    y_pred = _triple_exp(t, *popt)
+    rmse = float(np.sqrt(np.mean((Q - y_pred) ** 2)))
+    r2 = _r_squared(Q, y_pred)
+
     terms = [
-        [float(best_params[2 * i]), float(best_params[2 * i + 1])]
-        for i in range(n_best)
+        [float(popt[0]), float(popt[1])],
+        [float(popt[2]), float(popt[3])],
+        [float(popt[4]), float(popt[5])],
     ]
-    return terms, best_r2
+    return terms, r2, rmse
 
 
 def plot_fit(
@@ -188,8 +149,8 @@ def plot_fit(
     """
     t_pos = time_years[time_years > 0]
     t_plot = np.geomspace(t_pos[0], t_pos[-1], 500)
-    params = [p for pair in terms for p in pair]
-    Q_fit = _decay_model(t_plot, *params)
+    a, b, c, d, e, f = (p for pair in terms for p in pair)
+    Q_fit = _triple_exp(t_plot, a, b, c, d, e, f)
 
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.semilogy(
@@ -199,7 +160,7 @@ def plot_fit(
     ax.semilogy(
         t_plot, Q_fit,
         "r-", linewidth=2,
-        label=f"Fitted ({len(terms)}-term exponential,  R² = {r2:.6f})",
+        label=f"Fitted (3-term exponential,  R² = {r2:.6f})",
     )
 
     param_lines = "\n".join(
