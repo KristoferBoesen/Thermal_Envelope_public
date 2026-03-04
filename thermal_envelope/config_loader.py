@@ -56,7 +56,8 @@ def load_config(yaml_path: str = None) -> Dict[str, Any]:
     Parameters
     ----------
     yaml_path : str or Path, optional
-        Path to config file. Defaults to ``solver_config.yaml`` in the project root.
+        Path to config file. Defaults to ``solver_config.yaml`` in the current
+        working directory.
 
     Returns
     -------
@@ -76,7 +77,7 @@ def load_config(yaml_path: str = None) -> Dict[str, Any]:
         - ``nodes``, ``max_years``, ``cooling_months`` (int / float)
     """
     if yaml_path is None:
-        yaml_path = Path(__file__).parent.parent / "solver_config.yaml"
+        yaml_path = Path.cwd() / "solver_config.yaml"
 
     with open(yaml_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
