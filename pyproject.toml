@@ -16,6 +16,9 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
 [project.scripts]
 thermal-envelope   = "thermal_envelope.__main__:main"
 decay-preprocessor = "decay_preprocessor.run_preprocessor:main"
