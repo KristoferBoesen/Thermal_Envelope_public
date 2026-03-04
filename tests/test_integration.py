@@ -49,7 +49,7 @@ class TestSmokeRun:
         Run main() once with a tiny grid (3 radii, 1 loading) and return the
         output directory and the resulting DataFrame.
         """
-        from main import main  # import here to avoid import errors at collection time
+        from thermal_envelope.__main__ import main
 
         tmp_dir = tmp_path_factory.mktemp("smoke_results")
         main([

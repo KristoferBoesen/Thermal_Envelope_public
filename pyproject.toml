@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "thermal-envelope"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-thermal-envelope   = "main:main"
+thermal-envelope   = "thermal_envelope.__main__:main"
 decay-preprocessor = "decay_preprocessor.run_preprocessor:main"
 
 [tool.setuptools.packages.find]

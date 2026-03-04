@@ -4,16 +4,19 @@ CLI entry point for the Thermal Envelope Design Tool.
 Usage examples::
 
     # Run with defaults from solver_config.yaml
-    python main.py
+    thermal-envelope
 
     # Specify repository geology
-    python main.py --repo Salt
+    thermal-envelope --repo Salt
 
     # Override sweep parameters
-    python main.py --repo Bentonite --loadings 5 10 --radii-steps 50
+    thermal-envelope --repo Bentonite --loadings 5 10 --radii-steps 50
 
     # Suppress plot generation
-    python main.py --no-plot
+    thermal-envelope --no-plot
+
+    # Also runnable as a module
+    python -m thermal_envelope
 """
 
 import argparse
