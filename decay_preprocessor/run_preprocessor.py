@@ -5,26 +5,25 @@ Reads an isotope inventory CSV, runs the full Bateman decay chain solver,
 fits a sum-of-exponentials to the output, and prints the fitted parameters
 formatted for direct paste into ``solver_config.yaml``.
 
-All parameters have defaults drawn from ``decay_preprocessor/preprocessor_config.yaml``.
-Any value can be overridden on the command line.
-
 Usage::
 
-    # Zero-flag run (uses decay_preprocessor/config.yaml entirely):
-    python -m decay_preprocessor.run_preprocessor
+    decay-preprocessor \\
+        --inventory path/to/inventory.csv \\
+        --chain     path/to/chain.xml \\
+        --sample-mass 100.0
 
-    # Override one parameter:
-    python -m decay_preprocessor.run_preprocessor --sample-mass 90.0
-
-    # Full run and auto-update root solver_config.yaml:
-    python -m decay_preprocessor.run_preprocessor --update-config
+    # Auto-write fitted terms back into solver_config.yaml:
+    decay-preprocessor --inventory ... --chain ... --sample-mass ... --update-config
 
 The inventory CSV must have two columns:
 
 - ``Isotope`` — nuclide name string matching the chain file (e.g. ``"Co60"``)
 - ``Atoms``   — number of atoms at t = 0
 
-Output files written to ``--output-dir``:
+Chain XML files (OpenMC format) can be obtained from:
+    https://openmc.org/nuclear-data/
+
+Output files written to ``--output-dir`` (default: current directory):
 
 - ``decay_curve.csv`` — raw Bateman solution (Time_Years, Heat_Watts, Specific_Power_W_kg)
 - ``decay_fit.png``   — diagnostic plot comparing Bateman solution to fitted curve
@@ -36,7 +35,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from decay_preprocessor.config_loader import load_config
 from decay_preprocessor.chain_parser import parse_chain
 from decay_preprocessor.bateman_solver import solve_decay
 from decay_preprocessor.decay_fitter import fit_decay_curve, plot_fit
@@ -72,7 +70,7 @@ def _write_decay_terms_to_config(terms, config_path):
         if in_decay_terms:
             if stripped.startswith("- ["):
                 old_terms_display.append(stripped)
-                continue  # skip old list entries
+                continue
             else:
                 in_decay_terms = False
         out.append(line)
@@ -85,83 +83,74 @@ def _write_decay_terms_to_config(terms, config_path):
 
 
 def main(argv=None):
-    cfg = load_config()
-
     parser = argparse.ArgumentParser(
         description="Decay Heat Preprocessor — Bateman solver + exponential fitter",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # --- Required arguments --------------------------------------------------
     parser.add_argument(
-        "--inventory", default=cfg.get("inventory"),
+        "--inventory", required=True,
         help=(
-            f"Path to isotope inventory CSV (columns: Isotope, Atoms). "
-            f"Config default: {cfg.get('inventory')}"
+            "Path to isotope inventory CSV (columns: Isotope, Atoms). "
+            "Lines starting with '#' are treated as comments."
         ),
     )
     parser.add_argument(
-        "--chain", default=cfg.get("chain"),
+        "--chain", required=True,
         help=(
-            f"Path to decay chain XML file. "
-            f"Config default: {cfg.get('chain')}"
+            "Path to OpenMC-format decay chain XML file. "
+            "Chain files can be obtained from https://openmc.org/nuclear-data/"
         ),
     )
     parser.add_argument(
-        "--sample-mass", type=float, default=cfg.get("sample_mass_kg"),
+        "--sample-mass", type=float, required=True,
         help=(
-            f"Waste material mass [kg]. "
-            f"Config default: {cfg.get('sample_mass_kg')}"
+            "Mass of the WASTE MATERIAL ONLY [kg]. "
+            "Do not use total canister or composite mass."
         ),
     )
+
+    # --- Optional arguments --------------------------------------------------
     parser.add_argument(
-        "--duration", type=float, default=cfg.get("duration_years", 10.0),
-        help="Simulation duration [years] (default from config).",
+        "--duration", type=float, default=10.0,
+        help="Simulation duration [years] (default: 10.0).",
     )
     parser.add_argument(
-        "--output-dir", default=cfg.get("output_dir", "."),
-        help="Directory for output files (default from config).",
+        "--output-dir", default=".",
+        help="Directory for output files (default: current directory).",
     )
     parser.add_argument(
-        "--n-points", type=int, default=cfg.get("n_points", 2000),
-        help="Number of log-spaced time evaluation points in the Bateman solver.",
+        "--n-points", type=int, default=2000,
+        help="Number of log-spaced time evaluation points (default: 2000).",
     )
     parser.add_argument(
-        "--cutoff-years", type=float, default=cfg.get("cutoff_years", 1 / 12),
-        help="Exclude data before this time [yr] when fitting the exponential.",
+        "--cutoff-years", type=float, default=1 / 12,
+        help=(
+            "Exclude data before this time [yr] when fitting (default: 1/12 ≈ 1 month). "
+            "Discards short-lived nuclides irrelevant to long-term cooling."
+        ),
     )
     parser.add_argument(
         "--update-config", action="store_true",
         help=(
-            "Write fitted decay_terms back into the root solver_config.yaml automatically. "
-            "Only the decay_terms block is changed; all other content is preserved."
+            "Write fitted decay_terms back into solver_config.yaml in the current "
+            "directory. Only the decay_terms block is changed; all other content "
+            "is preserved."
         ),
     )
-    args = parser.parse_args(argv)
 
-    # Validate required inputs (now optional CLI flags with config defaults)
-    missing = [
-        name for name, val in [
-            ("--inventory", args.inventory),
-            ("--chain", args.chain),
-            ("--sample-mass", args.sample_mass),
-        ]
-        if val is None
-    ]
-    if missing:
-        parser.error(
-            f"The following arguments are required (set them in "
-            f"decay_preprocessor/preprocessor_config.yaml or pass on the command line): "
-            + ", ".join(missing)
-        )
+    args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Step 1: Parse chain file ---
+    # --- Step 1: Parse chain file --------------------------------------------
     print(f"[1/4] Parsing chain file:  {args.chain}")
     nuc_to_idx, decay_constants, q_values, matrix_A = parse_chain(args.chain)
     print(f"      {len(nuc_to_idx):,} nuclides loaded.")
 
-    # --- Step 2: Load inventory ---
+    # --- Step 2: Load inventory ----------------------------------------------
     print(f"[2/4] Loading inventory:   {args.inventory}")
     inventory_df = pd.read_csv(args.inventory, comment="#")
     n_matched = sum(1 for iso in inventory_df["Isotope"] if iso in nuc_to_idx)
@@ -171,13 +160,13 @@ def main(argv=None):
     )
     if n_matched == 0:
         print(
-            "ERROR: No inventory isotopes matched the chain file.  "
+            "ERROR: No inventory isotopes matched the chain file. "
             "Check nuclide naming conventions.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    # --- Step 3: Solve Bateman equations ---
+    # --- Step 3: Solve Bateman equations -------------------------------------
     print(f"[3/4] Solving decay chain for {args.duration:.1f} years ...")
     result_df = solve_decay(
         inventory_df=inventory_df,
@@ -193,7 +182,7 @@ def main(argv=None):
     result_df.to_csv(csv_path, index=False)
     print(f"      Saved: {csv_path}")
 
-    # --- Step 4: Fit sum-of-exponentials ---
+    # --- Step 4: Fit sum-of-exponentials -------------------------------------
     print("[4/4] Fitting sum-of-exponentials ...")
     terms, r2, rmse = fit_decay_curve(
         result_df["Time_Years"].values,
@@ -201,7 +190,7 @@ def main(argv=None):
         cutoff_years=args.cutoff_years,
     )
 
-    # --- Print YAML-ready output ---
+    # --- Print YAML-ready output ---------------------------------------------
     print("\n" + "=" * 60)
     print(f"Fit quality:  R² = {r2:.8f}  |  RMSE = {rmse:.2f} W/kg")
     print(f"Terms fitted: {len(terms)}")
@@ -212,7 +201,7 @@ def main(argv=None):
         print(f"    - [{A:.6g}, {lam:.6g}]")
     print()
 
-    # --- Save diagnostic plot ---
+    # --- Save diagnostic plot ------------------------------------------------
     plot_path = output_dir / "decay_fit.png"
     plot_fit(
         result_df["Time_Years"].values,
@@ -223,13 +212,13 @@ def main(argv=None):
     )
     print(f"Plot saved:   {plot_path}")
 
-    # --- Optionally write fitted terms back to root config.yaml ---
+    # --- Optionally write fitted terms back to solver_config.yaml -----------
     if args.update_config:
-        root_config = Path(__file__).parent.parent / "solver_config.yaml"
+        root_config = Path.cwd() / "solver_config.yaml"
         try:
             _write_decay_terms_to_config(terms, root_config)
         except Exception as exc:
-            print(f"  Warning: could not write config.yaml: {exc}")
+            print(f"  Warning: could not write solver_config.yaml: {exc}")
             print("  Paste the terms above manually.")
 
     print("\nDone.")

@@ -9,6 +9,9 @@ build/
 .venv/
 env/
 
+# Chain XML files (user-supplied; not distributed with the package)
+data/
+
 # Solver outputs (not tracked; regenerate with main.py)
 results/
 
