@@ -1,4 +1,6 @@
-# Thermal Envelope Solver
+# AETHON
+
+**A**nalysis of **E**ncapsulated **T**hermal **H**eat and **O**ptimised **N**uclides
 
 A tool for computing the **cooling schedule** of vitrified nuclear waste canisters.
 Given a canister geometry and waste loading, it produces:
@@ -53,7 +55,7 @@ Output is written to `results/` by default.
 | `decay_preprocessor/preprocessor_config.yaml` | **You** — only if using the decay preprocessor |
 | `examples/` | Reference input files |
 | `data/` | Bundled decay chain data (do not edit) |
-| `thermal_envelope/` | Solver internals (do not edit) |
+| `aethon/` | Solver internals (do not edit) |
 | `decay_preprocessor/` | Preprocessor internals (do not edit) |
 | `tests/` | Test suite (do not edit) |
 

@@ -1,4 +1,4 @@
-# Technical Overview — Thermal Envelope Solver
+# Technical Overview — AETHON
 
 This document explains **what the solver does, why it does it that way, and how
 all the pieces fit together.** It is written for someone who wants to understand
@@ -24,7 +24,7 @@ levels.
 ### Why temperature matters
 
 Borosilicate glass is stable (amorphous) up to roughly 500 °C.  Above this
-**glass transition temperature** the structure begins to devitrify — crystalline
+**glass transition temperature** the structure begins to devitrify. Crystalline
 phases nucleate, the waste form loses integrity, and its long-term radionuclide
 retention properties degrade.  Keeping the glass below this limit is a hard
 safety requirement throughout the storage lifecycle.
@@ -42,7 +42,7 @@ Nuclear waste canisters pass through two distinct thermal environments:
    geological repository (DGR) where it relies on natural (passive) convection
    to the surrounding rock or engineered barrier.  The passive HTC is fixed and
    low (~5 W/(m²·K)).  The canister must be cool enough at the time of
-   emplacement that it never exceeds the repository surface temperature limit
+   emplacement that it never exceeds the centreline or repository surface temperature limit
    (100 °C for Bentonite clay, 200 °C for salt rock) even under steady-state
    decay heating for all future time.
 
@@ -122,7 +122,7 @@ the specific decay power defined by the fitted exponential terms.
   Implemented as a control-volume energy balance on the outermost half-cell.
 
 **Material properties** are temperature-dependent: `k(T)` and `Cₚ(T)` are
-quadratic polynomials in Kelvin, defined in `config.yaml` and evaluated at each
+expressions in Kelvin, defined in `config.yaml` and evaluated at each
 node at each time step.
 
 ### 3.2 Passive phase — analytical steady-state
@@ -196,7 +196,7 @@ The parameters are determined by the **Decay Preprocessor** (see Section 6).
 ## 5. File Structure
 
 ```
-Thermal_Envelope_public/
+AETHON/
 │
 ├── main.py                        # CLI entry point for the thermal solver
 ├── config.yaml                    # All user-adjustable parameters

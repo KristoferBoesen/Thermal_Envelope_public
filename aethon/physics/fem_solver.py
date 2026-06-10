@@ -21,7 +21,7 @@ Discretisation:
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from thermal_envelope.constants import SEC_PER_YEAR, DEFAULT_RTOL
+from aethon.constants import SEC_PER_YEAR, DEFAULT_RTOL
 
 
 class WasteForm:

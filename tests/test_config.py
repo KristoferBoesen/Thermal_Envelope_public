@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from thermal_envelope.config_loader import load_config, _make_expression
+from aethon.config_loader import load_config, _make_expression
 
 
 @pytest.fixture

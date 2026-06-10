@@ -1,9 +1,11 @@
 """
-thermal_envelope — Thermal design envelope for vitrified nuclear waste canisters.
+aethon — AETHON: Analysis of Encapsulated Thermal Heat and Optimised Nuclides.
+
+Thermal design envelope for vitrified nuclear waste canisters.
 
 Quick start::
 
-    from thermal_envelope import load_config, run_design_envelope
+    from aethon import load_config, run_design_envelope
     import numpy as np
 
     cfg   = load_config("solver_config.yaml")
@@ -19,9 +21,9 @@ Quick start::
     )
 """
 
-from thermal_envelope.config_loader import load_config
-from thermal_envelope.analysis.pipeline import run_design_envelope
-from thermal_envelope.analysis.plotting import plot_design_envelope
+from aethon.config_loader import load_config
+from aethon.analysis.pipeline import run_design_envelope
+from aethon.analysis.plotting import plot_design_envelope
 
 __all__ = [
     "load_config",

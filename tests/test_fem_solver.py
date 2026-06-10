@@ -6,8 +6,8 @@ so these tests are independent of solver_config.yaml content.
 
 import numpy as np
 import pytest
-from thermal_envelope.constants import KELVIN_OFFSET
-from thermal_envelope.physics.fem_solver import WasteForm
+from aethon.constants import KELVIN_OFFSET
+from aethon.physics.fem_solver import WasteForm
 
 # --- Inline properties for testing (no config dependency) ---
 

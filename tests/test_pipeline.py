@@ -26,8 +26,8 @@ import math
 import numpy as np
 import pytest
 
-from thermal_envelope.analysis.pipeline import find_min_h_active, find_min_cooling_years
-from thermal_envelope.constants import KELVIN_OFFSET
+from aethon.analysis.pipeline import find_min_h_active, find_min_cooling_years
+from aethon.constants import KELVIN_OFFSET
 
 # ---------------------------------------------------------------------------
 # Shared constants for all pipeline tests

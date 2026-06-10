@@ -19,9 +19,9 @@ import pandas as pd
 from scipy.optimize import brentq
 from typing import Dict, List, Any
 
-from thermal_envelope.constants import KELVIN_OFFSET, H_SEARCH_MAX, T_SEARCH_MAX_YEARS
-from thermal_envelope.physics.fem_solver import WasteForm
-from thermal_envelope.physics.analytical import max_allowable_heat_rate
+from aethon.constants import KELVIN_OFFSET, H_SEARCH_MAX, T_SEARCH_MAX_YEARS
+from aethon.physics.fem_solver import WasteForm
+from aethon.physics.analytical import max_allowable_heat_rate
 
 
 def _effective_density(rho_base: float, loading_fraction: float) -> float:

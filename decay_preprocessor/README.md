@@ -3,7 +3,7 @@
 A standalone preprocessing tool that converts a full isotope inventory into
 fitted decay heat parameters for use in `solver_config.yaml`.
 
-Run this tool **once** before using the thermal envelope solver whenever you
+Run this tool **once** before using AETHON whenever you
 have a new isotope inventory. The thermal solver itself only needs the fitted
 exponential coefficients.
 

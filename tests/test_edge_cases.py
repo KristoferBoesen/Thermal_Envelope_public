@@ -15,7 +15,7 @@ Maps common user mistakes to expected (non-crashing) behaviour:
 import numpy as np
 import pytest
 
-from thermal_envelope.analysis.pipeline import find_min_h_active, find_min_cooling_years
+from aethon.analysis.pipeline import find_min_h_active, find_min_cooling_years
 
 # ---------------------------------------------------------------------------
 # Shared helpers (identical to test_pipeline.py)

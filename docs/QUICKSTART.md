@@ -6,7 +6,7 @@
 pip install -r requirements.txt
 ```
 
-Or, for a proper install that adds `thermal-envelope` as a shell command:
+Or, for a proper install that adds `aethon` as a shell command:
 
 ```bash
 pip install -e .
@@ -61,7 +61,7 @@ python main.py --repo Bentonite
 Or, if installed with `pip install -e .`:
 
 ```bash
-thermal-envelope --repo Bentonite
+aethon --repo Bentonite
 ```
 
 

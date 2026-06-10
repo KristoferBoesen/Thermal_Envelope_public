@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from thermal_envelope.config_loader import load_config
+from aethon.config_loader import load_config
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -49,7 +49,7 @@ class TestSmokeRun:
         Run main() once with a tiny grid (3 radii, 1 loading) and return the
         output directory and the resulting DataFrame.
         """
-        from thermal_envelope.__main__ import main
+        from aethon.__main__ import main
 
         tmp_dir = tmp_path_factory.mktemp("smoke_results")
         main([

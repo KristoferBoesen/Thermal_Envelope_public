@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from thermal_envelope.physics.analytical import (
+from aethon.physics.analytical import (
     steady_state_centerline,
     steady_state_surface,
     max_allowable_heat_rate,

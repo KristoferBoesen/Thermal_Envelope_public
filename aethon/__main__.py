@@ -1,31 +1,31 @@
 """
-CLI entry point for the Thermal Envelope Design Tool.
+CLI entry point for AETHON (Analysis of Encapsulated Thermal Heat and Optimised Nuclides).
 
 Usage examples::
 
     # Run with defaults from solver_config.yaml
-    thermal-envelope
+    aethon
 
     # Specify repository geology
-    thermal-envelope --repo Salt
+    aethon --repo Salt
 
     # Override sweep parameters
-    thermal-envelope --repo Bentonite --loadings 5 10 --radii-steps 50
+    aethon --repo Bentonite --loadings 5 10 --radii-steps 50
 
     # Suppress plot generation
-    thermal-envelope --no-plot
+    aethon --no-plot
 
     # Also runnable as a module
-    python -m thermal_envelope
+    python -m aethon
 """
 
 import argparse
 import numpy as np
 from pathlib import Path
 
-from thermal_envelope.config_loader import load_config
-from thermal_envelope.analysis.pipeline import run_design_envelope
-from thermal_envelope.analysis.plotting import plot_design_envelope
+from aethon.config_loader import load_config
+from aethon.analysis.pipeline import run_design_envelope
+from aethon.analysis.plotting import plot_design_envelope
 
 
 def parse_args(cfg: dict, argv=None) -> argparse.Namespace:

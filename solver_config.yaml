@@ -1,5 +1,5 @@
 # =============================================================================
-# config.yaml — User Settings for the Thermal Envelope Solver
+# config.yaml — User Settings for AETHON
 # =============================================================================
 # Edit this file to configure the simulation. All user-adjustable parameters
 # are defined here. Run with:  python main.py
