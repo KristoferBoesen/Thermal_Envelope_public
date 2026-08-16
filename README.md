@@ -2,138 +2,149 @@
 
 **A**nalysis of **E**ncapsulated **T**hermal **H**eat and **O**ptimised **N**uclides
 
-A tool for computing the **cooling schedule** of vitrified nuclear waste canisters.
-Given a canister geometry and waste loading, it produces:
+Works out what cooling infrastructure a vitrified nuclear waste stream needs.
+You supply an isotope inventory and the matrix you intend to immobilise it in;
+AETHON sweeps canister designs and **maps** when each one can be encapsulated,
+when its coolers can stop, and when a repository will accept it.
 
-1. **Minimum active HTC** — the convective heat transfer coefficient required to keep
-   the glass below its transition temperature during peak decay heat.
-2. **Minimum cooling time** — years of active cooling needed before the canister can
-   safely transition to passive repository storage.
-
-Results are swept over a range of canister radii and waste loading fractions and
-output as a CSV and stacked design-envelope plot.
-
-See [**QUICKSTART.md**](docs/QUICKSTART.md) for the 3-step setup guide.
+Nothing is ranked. The output is the design space, not a recommendation.
 
 ---
 
-## Installation
+## Documentation
+
+| | |
+|---|---|
+| **[Tutorial](docs/tutorial.md)** | One worked run, inventory to maps. Start here. |
+| **[How-to guides](docs/how-to.md)** | How to use your own inventory, material, geology, cooling technology |
+| **[Reference](docs/reference.md)** | Every command, config key, file format and output column |
+| **[Physics](docs/physics.md)** | The model, and how it functions |
+
+---
+
+## Install
 
 ```bash
-pip install -r requirements.txt
+git clone <repository-url>
+cd aethon
+pip install -e .
 ```
 
-No compiled dependencies. Python 3.10+ recommended.
+Python 3.10+. No compiled dependencies. Gives you `aethon` and
+`decay-preprocessor`. Run them from the repository directory.
 
 ---
 
-## Quick start
+## Example
 
 ```bash
-# Run with the example configuration
-python main.py
+# 1. Fit a decay curve to your isotope inventory
+decay-preprocessor \
+    --inventory   examples/msr_inventory_5y.csv \
+    --chain       data/chain_endfb71_pwr.xml \
+    --output-dir  results/decay
 
-# Specify repository geology
-python main.py --repo Salt
+# 2. Point solver_config.yaml at the result
+#    waste_source: results/decay/waste_source.yaml
 
-# Override sweep resolution
-python main.py --repo Bentonite --radii-steps 200 --loadings 5 10 20
-
-# Suppress plot output
-python main.py --no-plot
+# 3. Sweep the design space
+aethon --material CA_Recycling_Bg-CaF2 --repo Salt
 ```
 
-Output is written to `results/` by default.
+`solver_config.yaml` ships filled in and ready to run. Every setting is
+documented in place, and in [reference.md](docs/reference.md#configuration-file).
+
+Decay chain files are ~27 MB and are not bundled; download one from
+<https://openmc.org/nuclear-data/>. The [tutorial](docs/tutorial.md) covers
+this properly.
+
+You get two maps over canister radius and waste loading:
+
+| Figure | Answers |
+|---|---|
+| `design_map_passive_*.png` | When can the coolers stop, and when will each repository accept it? |
+| `design_map_encapsulation_*.png` | Which canisters can each cooling technology handle, and how soon? |
+
+plus `explore_full_*.csv` with every point evaluated, and `run_config.yaml`
+recording the settings that produced them.
+
+### Checking specific designs
+
+Once you have shortlisted candidates, name them in `solver_config.yaml`:
+
+```yaml
+candidates:
+  - {name: A, radius_m: 0.080, loading_pct: 15}
+  - {name: D, radius_m: 0.215, loading_pct: 25}
+```
+
+and each run reports them exactly:
+
+```
+Name  Radius_m  Loading_Pct  N_canisters Geology Archetype  t_encap_yr  t_coolers_off_yr  t_geo_yr
+   A     0.080       15.000           30    Salt ForcedAir       0.192             0.584     1.466
+   D     0.215       25.000            1    Salt ForcedAir       1.413            41.110    79.904
+```
+
+One canister means waiting 80 years before emplacement; thirty cuts that to
+1.5. Which you prefer is yours to decide.
 
 ---
 
-## File layout
+## What it models
 
-| Path | Who edits it |
-|------|-------------|
-| `solver_config.yaml` | **You** — all thermal solver settings |
-| `decay_preprocessor/preprocessor_config.yaml` | **You** — only if using the decay preprocessor |
-| `examples/` | Reference input files |
-| `data/` | Bundled decay chain data (do not edit) |
-| `aethon/` | Solver internals (do not edit) |
-| `decay_preprocessor/` | Preprocessor internals (do not edit) |
-| `tests/` | Test suite (do not edit) |
+Three milestones, all measured in **years from reactor shutdown**:
 
----
+| Milestone | What happens |
+|---|---|
+| `t_encap` | Waste sealed into a canister, active cooling begins |
+| `t_coolers_off` | Centreline passively safe; cooling infrastructure no longer required |
+| `t_geo` | Surface passively safe for repository emplacement |
 
-## Configuration
 
-All parameters are set in `solver_config.yaml`. Key sections:
-
-| Section | Description |
-|---------|-------------|
-| `waste_form_name` | Label used in output filenames |
-| `waste_form` | Material properties: density, decay heat, cp(T), k(T) |
-| `centerline_limit_C` | Glass-transition temperature limit [°C] |
-| `safety_factor` | Divisor applied to all temperature limits |
-| `surface_limits_C` | Repository surface temperature limits by geology |
-| `radii_min/max/steps` | Canister radius sweep range and resolution |
-| `loadings_pct` | Waste loading percentages to evaluate |
-| `max_h_active` | Feasibility ceiling for active HTC [W/(m²·K)] |
-| `max_cooling_years` | Feasibility ceiling for cooling time [years] |
-
-### Decay heat parameters
-
-The `decay_terms` field under `waste_form` defines the specific decay heat curve:
-
-```
-Q(t) = Σ Aᵢ · exp(−λᵢ · t)   [W/kg],   t in years
-```
-
-If you have an isotope inventory, use the **decay preprocessor** to compute these
-parameters automatically.
 
 ---
 
-## Decay preprocessor
+## Two things you choose, separately
 
-The `decay_preprocessor/` tool converts a full isotope inventory into fitted
-decay heat parameters. Run it **once** before using the thermal solver.
+| You pick | With | It supplies |
+|---|---|---|
+| The **matrix** — the glass or ceramic block | `material:` | `k(T)`, `cp(T)`, density, devitrification limit |
+| The **waste stream** — what is inside it | `waste_source:` | decay curve, campaign mass |
 
-Edit `decay_preprocessor/preprocessor_config.yaml` to set your inventory path,
-sample mass, and chain file, then run:
+The matrix is the container; the waste stream is the contents. The same waste
+can go into different matrices, and the same matrix can hold waste from
+different reactors, so they are set independently. ("Waste form" usually means
+the combination of the two; AETHON keeps them apart.)
+
+Ships with `BorosilicateGlass` plus two Copenhagen Atomics glass-ceramics.
+
+---
+
+## A caution
+
+The built-in cooling technologies carry **literature-typical convective ranges
+for orientation, not vendor performance data**. Any conclusion of the form
+"forced air is sufficient" depends entirely on those numbers. Replace them with
+figures from your own facility design before relying on the result — see
+[how-to.md](docs/how-to.md#define-my-own-cooling-technology).
+
+More generally, read [what the model does not
+include](docs/physics.md#what-the-model-does-not-include) before quoting a
+number. The model is 1D, single-canister, and worst-case rather than
+probabilistic.
+
+---
+
+## Tests
 
 ```bash
-# Zero-flag run (uses preprocessor_config.yaml entirely):
-python -m decay_preprocessor.run_preprocessor
-
-# Auto-write fitted terms directly into solver_config.yaml:
-python -m decay_preprocessor.run_preprocessor --update-config
-```
-
-See [`decay_preprocessor/README.md`](decay_preprocessor/README.md) for full
-documentation including the chain XML format and where to obtain chain files.
-
----
-
-## Running tests
-
-```bash
-pytest tests/ -v
+pytest tests/ -v                # everything
+pytest tests/ -v -m "not slow"  # skip the real-chain integration test
 ```
 
 ---
 
-## Physics
+## Licence
 
-The solver uses:
-
-- **Transient active phase**: 1D cylindrical Method of Lines FD solver
-  (`scipy.integrate.solve_ivp`, BDF). Terminates at peak centreline temperature.
-- **Passive phase safety check**: Analytical steady-state cylindrical solution
-  inverted against repository surface and centreline limits.
-- **Root-finding**: `scipy.optimize.brentq` for both minimum-h and minimum-cooling-time searches.
-
-The governing PDE is:
-
-```
-ρ·Cₚ(T)·∂T/∂t = (1/r)·∂/∂r[r·k(T)·∂T/∂r] + Q_vol(t)
-```
-
-with a Robin (convection) boundary condition at the canister surface and
-symmetry at the centreline.
+See [LICENSE](LICENSE).

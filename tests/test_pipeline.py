@@ -1,7 +1,7 @@
-"""Unit tests for the design-envelope pipeline optimisation loops.
+"""Unit tests for the milestone root-finding functions.
 
-Uses inline properties and config dicts to avoid any dependency on solver_config.yaml,
-following the _make_sim() pattern in test_fem_solver.py.
+Uses inline properties and config dicts to avoid any dependency on
+solver_config.yaml, following the _make_sim() pattern in test_fem_solver.py.
 
 Analytical basis
 ----------------
@@ -15,18 +15,17 @@ Inverting for h at the temperature limit gives an analytical h_min that can
 be compared to the optimiser output (within ±15% to account for transient
 overshoot).
 
-For find_min_cooling_years with a single-term decay
-Q_vol(t) = A·exp(−λt)·ρ_eff·loading, the time at which Q_vol = Q_allowable
-is:
+For find_total_decay_years with a single-term decay
+Q_vol(t) = A·exp(−λt)·ρ_eff·loading, the time at which Q_vol = Q_allowable is:
 
-    t_min = (1/λ) × ln(A·ρ_eff·loading / Q_allowable)
+    t = (1/λ) × ln(A·ρ_eff·loading / Q_allowable)
 """
 
 import math
 import numpy as np
 import pytest
 
-from aethon.analysis.pipeline import find_min_h_active, find_min_cooling_years
+from aethon.analysis.pipeline import find_min_h_active, find_total_decay_years
 from aethon.constants import KELVIN_OFFSET
 
 # ---------------------------------------------------------------------------
@@ -34,7 +33,7 @@ from aethon.constants import KELVIN_OFFSET
 # ---------------------------------------------------------------------------
 _K   = 2.0      # W/(m·K)   — constant thermal conductivity
 _CP  = 500.0    # J/(kg·K)  — constant specific heat
-_RHO = 2500.0   # kg/m³     — base glass density
+_RHO = 2500.0   # kg/m³     — base matrix density
 
 
 def _make_props(decay_func=None):
@@ -49,21 +48,18 @@ def _make_props(decay_func=None):
 
 def _make_cfg(
     centerline_C=400.0,
-    surface_C=100.0,
     sf=1.0,
     nodes=15,
-    cooling_months=0.0,
-    ambient_C=40.0,
-    h_passive=5.0,
+    passive_ambient_C=40.0,
+    passive_h=5.0,
 ):
     """Return a minimal config dict for pipeline tests."""
     return {
         "centerline_limit_C": centerline_C,
         "safety_factor":      sf,
-        "ambient_temp_C":     ambient_C,
-        "h_passive":          h_passive,
-        "surface_limits_C":   {"Bentonite": surface_C, "Salt": 200.0},
-        "cooling_months":     cooling_months,
+        "passive_ambient_C":  passive_ambient_C,
+        "passive_h":          passive_h,
+        "h_passive":          passive_h,
         "nodes":              nodes,
         "max_years":          50.0,
     }
@@ -77,7 +73,6 @@ class TestFindMinHActive:
 
     def test_passive_sufficient_returns_nan(self):
         """Very low decay → peak T well below limit at h_passive → returns nan."""
-        # Q_vol ≈ 0.001 × 2631 × 0.05 ≈ 0.13 W/m³ → ΔT ≈ 0.001 K
         props = _make_props(decay_func=lambda t: 0.001 * np.exp(-0.5 * t))
         cfg   = _make_cfg()
         result = find_min_h_active(
@@ -86,12 +81,13 @@ class TestFindMinHActive:
             properties=props,
             rho_base=_RHO,
             cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
         )
         assert np.isnan(result), f"Expected nan, got {result}"
 
     def test_infeasible_returns_inf(self):
         """Enormous source, large radius → infeasible at H_SEARCH_MAX → returns inf."""
-        # Q_vol ≈ 1000 × 3571 × 0.3 ≈ 1.07e6 W/m³ → ΔT at h=2000 >> 360 K
         props = _make_props(decay_func=lambda t: 1000.0 * np.exp(-0.001 * t))
         cfg   = _make_cfg()
         result = find_min_h_active(
@@ -100,6 +96,8 @@ class TestFindMinHActive:
             properties=props,
             rho_base=_RHO,
             cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
         )
         assert np.isinf(result) and result > 0, f"Expected +inf, got {result}"
 
@@ -127,6 +125,8 @@ class TestFindMinHActive:
             properties=props,
             rho_base=_RHO,
             cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
         )
         analytical_h = 131.0
         assert np.isfinite(result), f"Expected finite h_min, got {result}"
@@ -136,134 +136,182 @@ class TestFindMinHActive:
 
     def test_min_h_increases_with_loading(self):
         """Higher waste loading → higher Q_vol → requires higher h_min."""
-        # Moderate decay so all loadings need active cooling
         props = _make_props(decay_func=lambda t: 500.0 * np.exp(-0.001 * t))
-        cfg   = _make_cfg(nodes=15)
-        h_results = []
-        for loading in [0.05, 0.10, 0.15]:
-            h = find_min_h_active(
+        cfg   = _make_cfg()
+        h_results = [
+            find_min_h_active(
                 R=0.1,
                 loading_fraction=loading,
                 properties=props,
                 rho_base=_RHO,
                 cfg=cfg,
+                ambient_C=40.0,
+                cooling_years=0.0,
             )
-            h_results.append(h)
+            for loading in (0.05, 0.10, 0.15)
+        ]
 
-        # All should be finite (passive not enough for any of them)
         assert all(np.isfinite(h) for h in h_results), (
             f"All h_min should be finite: {h_results}"
         )
-        # Strict monotone increase
         assert h_results[0] < h_results[1] < h_results[2], (
             f"h_min should increase with loading: {h_results}"
         )
 
+    def test_more_pre_cooling_lowers_required_h(self):
+        """
+        Letting the waste decay before encapsulation reduces the cooling duty.
+
+        This is the trade the archetype library exposes: waiting longer buys
+        the same margin a stronger cooling system would.
+        """
+        props = _make_props(decay_func=lambda t: 500.0 * np.exp(-0.5 * t))
+        cfg   = _make_cfg()
+        early = find_min_h_active(
+            R=0.1, loading_fraction=0.15, properties=props, rho_base=_RHO,
+            cfg=cfg, ambient_C=40.0, cooling_years=0.0,
+        )
+        late = find_min_h_active(
+            R=0.1, loading_fraction=0.15, properties=props, rho_base=_RHO,
+            cfg=cfg, ambient_C=40.0, cooling_years=3.0,
+        )
+        assert np.isfinite(early)
+        assert (np.isnan(late) or late < early), (
+            f"h_min should fall with pre-cooling: {early} -> {late}"
+        )
+
+    def test_cooler_facility_lowers_required_h(self):
+        """A colder hall needs less convective performance for the same design."""
+        props = _make_props(decay_func=lambda t: 500.0 * np.exp(-0.001 * t))
+        cfg   = _make_cfg()
+        warm = find_min_h_active(
+            R=0.1, loading_fraction=0.15, properties=props, rho_base=_RHO,
+            cfg=cfg, ambient_C=40.0, cooling_years=0.0,
+        )
+        cold = find_min_h_active(
+            R=0.1, loading_fraction=0.15, properties=props, rho_base=_RHO,
+            cfg=cfg, ambient_C=15.0, cooling_years=0.0,
+        )
+        assert cold < warm, f"colder ambient should need less h: {warm} -> {cold}"
+
 
 # ===========================================================================
-# Tests for find_min_cooling_years
+# Tests for find_total_decay_years
 # ===========================================================================
 
-class TestFindMinCoolingYears:
+_BENTONITE_SURFACE_C = 100.0
 
-    def test_cooling_immediately_safe_returns_zero(self):
+
+class TestFindTotalDecayYears:
+
+    def test_immediately_safe_returns_zero(self):
         """Tiny source → Q_vol < Q_allowable at t=0 → returns 0.0."""
-        # Q_vol ≈ 0.001 × 2631 × 0.05 ≈ 0.13 W/m³ << Q_allowable ≈ 2000 W/m³
         props = _make_props(decay_func=lambda t: 0.001 * np.exp(-1.0 * t))
         cfg   = _make_cfg()
-        result = find_min_cooling_years(
+        result = find_total_decay_years(
             R=0.3,
             loading_fraction=0.05,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
             cfg=cfg,
+            surface_limit_C=_BENTONITE_SURFACE_C,
         )
         assert result == 0.0, f"Expected 0.0, got {result}"
 
-    def test_cooling_never_safe_returns_inf(self):
-        """Near-constant source: Q_vol > Q_allowable even at t = 1000 yr → returns inf."""
-        # λ = 1e-5 yr⁻¹ (half-life ≈ 69 000 yr); large amplitude and loading
-        # Q_vol(1000) ≈ 100 × exp(-0.01) × 3571 × 0.3 ≈ 106 000 W/m³ >> 2000 W/m³
+    def test_never_safe_returns_inf(self):
+        """Near-constant source: Q_vol > Q_allowable even at t = 1000 yr → inf."""
         props = _make_props(decay_func=lambda t: 100.0 * np.exp(-1e-5 * t))
         cfg   = _make_cfg()
-        result = find_min_cooling_years(
+        result = find_total_decay_years(
             R=0.3,
             loading_fraction=0.3,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
             cfg=cfg,
+            surface_limit_C=_BENTONITE_SURFACE_C,
         )
         assert np.isinf(result) and result > 0, f"Expected +inf, got {result}"
 
-    def test_cooling_years_closed_form(self):
+    def test_closed_form(self):
         """
         Single-term decay → closed-form crossing time.
 
         Parameters:
           A = 50 W/kg, λ = 0.5 yr⁻¹, loading = 0.1, ρ_base = 2500 kg/m³
           → ρ_eff = 2777.8 kg/m³,  Q_vol(t) = 13888.9 × exp(−0.5t)  [W/m³]
-          R = 0.3 m, Bentonite (surface limit 100°C), h_passive = 5, k = 2.0
+          R = 0.3 m, surface limit 100 °C, h_passive = 5, k = 2.0
 
         Q_allowable (surface-limited):
           Q_surf = (373.15 − 313.15) / (0.3 / 10) = 2000 W/m³
 
         Closed form:
-          t_min = (1/λ) × ln(A·ρ_eff·loading / Q_allow)
-                = 2 × ln(13888.9 / 2000)
-                ≈ 3.876 yr
-
-        Tolerance: ±0.1 yr.
+          t = (1/λ) × ln(A·ρ_eff·loading / Q_allow)
+            = 2 × ln(13888.9 / 2000) ≈ 3.876 yr
         """
         props = _make_props(decay_func=lambda t: 50.0 * np.exp(-0.5 * t))
         cfg   = _make_cfg()
-        result = find_min_cooling_years(
+        result = find_total_decay_years(
             R=0.3,
             loading_fraction=0.1,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
             cfg=cfg,
+            surface_limit_C=_BENTONITE_SURFACE_C,
         )
 
-        # Analytical
         lam      = 0.5
         A        = 50.0
         eff_rho  = _RHO / (1.0 - 0.1)   # 2777.8
         loading  = 0.1
-        # Q_allowable: surface-limited at R=0.3, h=5, T_surf_limit=100°C
-        # k at midpoint ≈ 2.0 (constant); surface constraint is binding
         T_inf_K  = 40.0 + KELVIN_OFFSET
-        T_surf_K = 100.0 + KELVIN_OFFSET
+        T_surf_K = _BENTONITE_SURFACE_C + KELVIN_OFFSET
         Q_allow  = (T_surf_K - T_inf_K) / (0.3 / (2.0 * 5.0))   # = 2000.0
         t_analytical = (1.0 / lam) * math.log(A * eff_rho * loading / Q_allow)
 
-        assert np.isfinite(result), f"Expected finite t_min, got {result}"
+        assert np.isfinite(result), f"Expected finite t, got {result}"
         assert abs(result - t_analytical) <= 0.1, (
-            f"t_min = {result:.4f} yr, analytical = {t_analytical:.4f} yr "
+            f"t = {result:.4f} yr, analytical = {t_analytical:.4f} yr "
             f"(diff = {abs(result - t_analytical):.4f} yr)"
         )
 
-    def test_cooling_years_increases_with_loading(self):
-        """Higher waste loading → longer required cooling time."""
+    def test_increases_with_loading(self):
+        """Higher waste loading → longer wait before passive safety."""
         props = _make_props(decay_func=lambda t: 50.0 * np.exp(-0.5 * t))
         cfg   = _make_cfg()
-        t_results = []
-        for loading in [0.05, 0.10]:
-            t = find_min_cooling_years(
+        t_results = [
+            find_total_decay_years(
                 R=0.3,
                 loading_fraction=loading,
                 properties=props,
                 rho_base=_RHO,
-                repo_type="Bentonite",
                 cfg=cfg,
+                surface_limit_C=_BENTONITE_SURFACE_C,
             )
-            t_results.append(t)
+            for loading in (0.05, 0.10)
+        ]
 
         assert all(np.isfinite(t) for t in t_results), (
-            f"Both cooling times should be finite: {t_results}"
+            f"Both times should be finite: {t_results}"
         )
         assert t_results[0] < t_results[1], (
-            f"Cooling time should increase with loading: {t_results}"
+            f"Time should increase with loading: {t_results}"
         )
+
+    def test_dropping_surface_limit_is_never_later(self):
+        """
+        Removing the surface constraint can only raise the allowable heat,
+        so the centreline-only milestone cannot come later.  This is what
+        guarantees t_coolers_off <= t_geo.
+        """
+        props = _make_props(decay_func=lambda t: 50.0 * np.exp(-0.5 * t))
+        cfg   = _make_cfg()
+        kwargs = dict(
+            R=0.3, loading_fraction=0.1, properties=props,
+            rho_base=_RHO, cfg=cfg,
+        )
+        with_surface = find_total_decay_years(
+            surface_limit_C=_BENTONITE_SURFACE_C, **kwargs,
+        )
+        centre_only = find_total_decay_years(surface_limit_C=np.inf, **kwargs)
+
+        assert centre_only <= with_surface + 1e-9

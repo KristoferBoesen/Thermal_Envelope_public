@@ -16,7 +16,7 @@ keeps temperatures within repository safety limits.
 """
 
 import numpy as np
-from typing import Callable
+from typing import Callable, Tuple
 
 
 def steady_state_centerline(
@@ -71,17 +71,23 @@ def steady_state_surface(
     return T_inf + (Q_vol * R) / (2.0 * h)
 
 
-def max_allowable_heat_rate(
+def allowable_heat_rate_components(
     R: float,
     h: float,
     T_inf: float,
     T_limit_center: float,
     T_limit_surface: float,
     k_func: Callable,
-) -> float:
+) -> Tuple[float, float]:
     """
-    Maximum allowable volumetric heat generation [W/m³] subject to both
-    centreline and surface temperature limits.
+    Allowable volumetric heat generation [W/m³] under each constraint separately.
+
+    Returned as a pair so callers can tell *which* constraint binds, rather
+    than only how tight the combined limit is.  Pass
+    ``T_limit_surface=np.inf`` to disable the surface constraint — the
+    returned ``Q_max_surface`` is then infinite, which is the correct
+    behaviour for storage phases where surface temperature is unconstrained
+    (e.g. a passive interim store with no buffer material in contact).
 
     The centreline constraint depends on k, which is temperature-dependent.
     We evaluate k at the midpoint between T_∞ and the centreline limit as a
@@ -99,14 +105,14 @@ def max_allowable_heat_rate(
     T_limit_center : float
         Max allowable centreline temperature [K].
     T_limit_surface : float
-        Max allowable surface temperature [K].
+        Max allowable surface temperature [K].  May be ``np.inf``.
     k_func : Callable
         ``k(T) → float``, thermal conductivity as a function of temperature.
 
     Returns
     -------
-    float
-        Maximum allowable Q_vol [W/m³].
+    tuple of (Q_max_center, Q_max_surface)
+        Allowable Q_vol [W/m³] under the centreline and surface limits.
     """
     # Surface constraint (independent of k)
     Q_max_surface = (T_limit_surface - T_inf) / (R / (2.0 * h))
@@ -117,4 +123,51 @@ def max_allowable_heat_rate(
     k_avg = float(np.asarray(k_val).flat[0])
     Q_max_center = (T_limit_center - T_inf) / (R / (2.0 * h) + R**2 / (4.0 * k_avg))
 
+    return Q_max_center, Q_max_surface
+
+
+def max_allowable_heat_rate(
+    R: float,
+    h: float,
+    T_inf: float,
+    T_limit_center: float,
+    T_limit_surface: float,
+    k_func: Callable,
+) -> float:
+    """
+    Maximum allowable volumetric heat generation [W/m³] subject to both
+    centreline and surface temperature limits.
+
+    Thin wrapper over :func:`allowable_heat_rate_components` returning the
+    binding (minimum) of the two.
+
+    Parameters
+    ----------
+    R : float
+        Cylinder radius [m].
+    h : float
+        Heat transfer coefficient [W/(m²·K)].
+    T_inf : float
+        Ambient temperature [K].
+    T_limit_center : float
+        Max allowable centreline temperature [K].
+    T_limit_surface : float
+        Max allowable surface temperature [K].  Pass ``np.inf`` to apply the
+        centreline constraint alone.
+    k_func : Callable
+        ``k(T) → float``, thermal conductivity as a function of temperature.
+
+    Returns
+    -------
+    float
+        Maximum allowable Q_vol [W/m³].
+    """
+    Q_max_center, Q_max_surface = allowable_heat_rate_components(
+        R=R,
+        h=h,
+        T_inf=T_inf,
+        T_limit_center=T_limit_center,
+        T_limit_surface=T_limit_surface,
+        k_func=k_func,
+    )
     return min(Q_max_center, Q_max_surface)

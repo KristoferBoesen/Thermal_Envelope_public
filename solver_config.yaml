@@ -1,86 +1,168 @@
 # =============================================================================
-# config.yaml — User Settings for AETHON
+# solver_config.yaml - settings for AETHON
 # =============================================================================
-# Edit this file to configure the simulation. All user-adjustable parameters
-# are defined here. Run with:  python main.py
+# Run with:  aethon
 #
-# Decay heat parameters (decay_terms) can be obtained by running the
-# decay preprocessor on an isotope inventory:
-#   python -m decay_preprocessor.run_preprocessor --help
+# Every key is documented in docs/reference.md#configuration-file
+# New here?  docs/tutorial.md walks through a complete run.
 # =============================================================================
 
 
-# --- Waste Form Label --------------------------------------------------------
-# Used in output filenames: Design_Envelope_<waste_form_name>_<repo>.csv
-waste_form_name: "MyWasteForm"
+# --- 1. Your waste stream ----------------------------------------------------
+# The decay curve, written by the decay preprocessor. Point this at your own
+# output once you have run it. Each run prints which curve it used and its heat
+# output at shutdown, so check that line before trusting results.
+
+waste_source: examples/ca_recycling_waste_source.yaml
 
 
-# --- Safety Limits -----------------------------------------------------------
+# --- 2. Your matrix ----------------------------------------------------------
+# One entry from the materials library below. Override with --material.
+# The default is paired with the waste stream above; change both together.
 
-# Glass-transition temperature for vitrified waste forms [°C].
-# For borosilicate glass the onset of devitrification is ~500 °C.
-# Recommended: set safety_factor >= 1.25 so the effective limit falls below 400 °C.
-centerline_limit_C: 400.0
-
-# Safety factor applied as a divisor to ALL temperature limits:
-#   Effective_Limit = Nominal_Limit / safety_factor
-# 1.0 = no margin;  1.25 = 20% margin.
-safety_factor: 1.0
-
-# Repository surface temperature limits by geology [°C].
-# Add or rename keys to match your repository type (use --repo flag to select).
-surface_limits_C:
-  Bentonite: 100.0
-  Salt: 200.0
+material: CA_Recycling_Bg-CaF2
 
 
-# --- Repository Conditions ---------------------------------------------------
+# --- 3. Your campaign --------------------------------------------------------
+# Affects fleet size only, never temperature.
 
-ambient_temp_C: 40.0           # Tunnel / storage rack air temperature [°C]
-h_passive: 5.0                 # Natural convection HTC [W/(m²·K)]
-
-
-# --- Sweep Parameters --------------------------------------------------------
-
-radii_min: 0.01                # Minimum canister radius [m]
-radii_max: 0.8                 # Maximum canister radius [m]
-radii_steps: 100               # Number of radius points to evaluate
-loadings_pct: [5, 10, 15, 20] # Waste loading percentages to evaluate
+campaign:
+  total_waste_mass_kg: 116.0     # [kg]
+  canister_aspect_ratio: 6.0     # height / radius
 
 
-# --- Feasibility Limits (stop exploring beyond these) -----------------------
+# --- 4. Your constraints -----------------------------------------------------
+# When the waste can be sealed into a canister, in years from reactor shutdown.
+# 'min' must not be earlier than the preprocessor's --cutoff-years, or the
+# decay curve is read outside its fitted range.
 
-max_h_active: 200.0            # Max practical HTC [W/(m²·K)]
-max_cooling_years: 10.0        # Max acceptable pre-emplacement cooling [years]
+pre_encapsulation_years:
+  min: 0.0833                    # 1 month
+  max: 5.0
+
+safety_factor: 1.0               # divides every temperature limit
 
 
-# --- Solver Settings ---------------------------------------------------------
+# --- 5. Your site ------------------------------------------------------------
+# Worst-case conditions in the interim store and the repository.
 
-nodes: 50                      # Radial finite-difference nodes
-max_years: 50.0                # Maximum transient simulation time [years]
-cooling_months: 1.0            # Pre-emplacement cooling already applied [months]
+passive:
+  h: 5.0                         # natural convection [W/(m2.K)]
+  ambient_C: 50.0                # [degC]
 
 
-# --- Waste Form Definition ---------------------------------------------------
-# cp and k are Python expression strings with T as temperature in Kelvin.
-# numpy is available as np. Any functional form can be expressed:
+# --- 6. What to compare ------------------------------------------------------
+# Chosen from the libraries at the bottom of this file. Comment out a line to
+# compare everything defined. --repo and --archetype override for one run.
 #
-#   Constant:   cp: "500.0"
-#   Polynomial: cp: "500.0 + 0.5*T - 1e-4*T**2"
-#   Shomate:    cp: "A + B*(T/1000) + C*(T/1000)**2 + D*(T/1000)**3 + E/(T/1000)**2"
-#   Power law:  k:  "200.0 * T**0.35"
-#   Piecewise:  cp: "np.interp(T, [300,400,500,600], [450,500,540,570])"
-#
-# Decay convention:  list of [Amplitude_W/kg, DecayConstant_1/yr] pairs
-#   Q(t) = Σ Aᵢ · exp(−λᵢ · t)   where t is in years.
-#
-# Run the decay preprocessor to generate decay_terms from an isotope inventory.
+# Each cooling technology costs a full pass of the transient solver, so cutting
+# this list is the quickest way to shorten a run.
 
-waste_form:
-  rho_base: 2500.0                         # Base glass density [kg/m³]
-  decay_terms:
-    - [100.0,  5.0]                         # [Amplitude W/kg, DecayConstant yr⁻¹]
-    - [ 20.0,  0.5]
-    - [  2.0,  0.05]
-  cp: "500.0 + 0.5*T"          # Specific heat [J/(kg·K)], T in Kelvin
-  k:  "2.0 - 1.0e-3*T"         # Thermal conductivity [W/(m·K)], T in Kelvin
+geologies:  [Bentonite, Salt]
+archetypes: [NaturalAir, ForcedAir, WaterPool]
+
+
+# --- 7. What to sweep --------------------------------------------------------
+# The axes of both output maps. Radii are sampled logarithmically, loadings
+# linearly. Too few points and the contours look stepped.
+#
+# Cost is radii.steps x loadings.steps x archetypes transient solves. The
+# passive map is analytic and free at any resolution; only the encapsulation
+# map is expensive.
+
+radii:
+  min: 0.05                      # [m]
+  max: 0.5                       # [m]
+  steps: 20
+
+loadings:
+  min: 5.0                       # [wt%]
+  max: 25.0                      # [wt%]
+  steps: 11
+
+
+# --- 8. Designs to check -----------------------------------------------------
+# Optional. Reports exact numbers for designs you have shortlisted, against
+# every geology and technology. They need not lie on the sweep grid.
+#
+# candidates:
+#   - {name: A, radius_m: 0.080, loading_pct: 15}
+#   - {name: B, radius_m: 0.140, loading_pct: 10}
+#   - {name: D, radius_m: 0.215, loading_pct: 25}
+
+
+# =============================================================================
+# Libraries - extend or edit these, then select from them in section 6.
+# =============================================================================
+
+
+# --- Materials ---------------------------------------------------------------
+# k and cp are Python expressions in T (KELVIN), with numpy available as np.
+# Adding your own: docs/how-to.md#add-my-own-waste-form-material
+
+materials:
+
+  # Reference matrix for LWR and other conventional reactor waste.
+  BorosilicateGlass:
+    rho_base: 2230.0                                  # [kg/m3]
+    k:  "1.2"                                         # [W/(m.K)]
+    cp: "935.56 + 0.38953*T - 24617000/T**2"          # [J/(kg.K)]
+    centerline_limit_C: 500.0                         # devitrification onset
+
+  # Copenhagen Atomics HIPed glass-ceramics for Thorium MSR waste.
+  # Both cp fits turn over above ~1500 K; do not extrapolate them.
+  CA_Recycling_Bg-CaF2:
+    rho_base: 2321.5                                  # [kg/m3]
+    k:  "1.585 - 3.879e-4*T + 1.291e-7*T**2"          # [W/(m.K)]
+    cp: "330.6 + 1.911*T - 1.086e-3*T**2"             # [J/(kg.K)]
+    centerline_limit_C: 500.0
+
+  CA_Emergency_Bg-CaF2-Zr:
+    rho_base: 3052.8                                  # [kg/m3]
+    k:  "2.797 - 2.015e-3*T + 1.176e-6*T**2"          # [W/(m.K)]
+    cp: "406.1 + 1.348*T - 7.654e-4*T**2"             # [J/(kg.K)]
+    centerline_limit_C: 500.0
+
+
+# --- Repository geologies ----------------------------------------------------
+# The limit is set by the buffer material in contact with the canister, not by
+# the rock itself.
+
+repositories:
+  Bentonite:
+    surface_limit_C: 100.0       # [degC]
+  Salt:
+    surface_limit_C: 200.0       # [degC]
+
+
+# --- Cooling technologies ----------------------------------------------------
+# h and ambient_C travel as a pair: convective flux is h*(T_surface - ambient),
+# so a cooler hall substitutes directly for a better coefficient.
+#
+# >>> LITERATURE-TYPICAL RANGES FOR ORIENTATION, NOT VENDOR DATA. <<<
+# Any conclusion of the form "forced air is sufficient" depends entirely on
+# these. Edit them to match your own facility before relying on one.
+
+cooling_archetypes:
+
+  NaturalAir:
+    h: 5.0                       # [W/(m2.K)]
+    ambient_C: 40.0              # [degC]
+    description: Unforced air in a passive vault; no cooling plant.
+
+  ForcedAir:
+    h: 25.0
+    ambient_C: 40.0
+    description: Fan-driven air over the canister surface.
+
+  WaterPool:
+    h: 750.0
+    ambient_C: 40.0
+    description: Full immersion in a cooled water pool.
+
+
+# --- Solver internals --------------------------------------------------------
+# Numerical settings, not physics. Leave these alone unless you know why.
+
+nodes: 50                        # radial finite-difference nodes
+max_years: 50.0                  # transient simulation horizon [yr]

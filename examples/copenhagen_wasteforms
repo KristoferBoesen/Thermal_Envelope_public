@@ -17,7 +17,7 @@ waste_form:
   k:  "1.655 + -5.016e-4*T + 1.815e-7*T**2"    # Thermal conductivity [W/(m·K)]  
   
 
-# Accident / Pessimistic scenario
+# Emergency / Accident / Pessimistic scenario
 waste_form:
   rho_base: 3052.8
   decay_terms:

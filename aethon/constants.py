@@ -17,3 +17,10 @@ T_SEARCH_MAX_YEARS: float = 1000.0  # Upper bracket for cooling time [yr]
 
 # --- Solver Internals --------------------------------------------------------
 DEFAULT_RTOL: float = 1e-3      # Relative tolerance for solve_ivp
+
+# Margin held below the centreline limit when reporting a required HTC.
+# A root-find against the limit itself returns the *critical* coefficient: at
+# that h the design sits exactly on the limit, so any real deviation puts it
+# over. Backing the target off by a degree makes the reported number one a
+# facility could actually be specified against.
+MIN_H_MARGIN_C: float = 1.0     # [degC] below the centreline limit

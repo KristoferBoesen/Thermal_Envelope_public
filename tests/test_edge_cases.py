@@ -15,7 +15,7 @@ Maps common user mistakes to expected (non-crashing) behaviour:
 import numpy as np
 import pytest
 
-from aethon.analysis.pipeline import find_min_h_active, find_min_cooling_years
+from aethon.analysis.pipeline import find_min_h_active, find_total_decay_years
 
 # ---------------------------------------------------------------------------
 # Shared helpers (identical to test_pipeline.py)
@@ -39,20 +39,23 @@ def _make_cfg(
     surface_C=100.0,
     sf=1.0,
     nodes=15,
-    cooling_months=0.0,
     ambient_C=40.0,
     h_passive=5.0,
 ):
     return {
         "centerline_limit_C": centerline_C,
         "safety_factor":      sf,
-        "ambient_temp_C":     ambient_C,
+        "passive_ambient_C":  ambient_C,
+        "passive_h":          h_passive,
         "h_passive":          h_passive,
         "surface_limits_C":   {"Bentonite": surface_C, "Salt": 200.0},
-        "cooling_months":     cooling_months,
         "nodes":              nodes,
         "max_years":          50.0,
     }
+
+
+# Surface limit the decay-milestone tests are written against
+_SURFACE_C = 100.0
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +69,7 @@ class TestEdgeCases:
         Loading = 0 → Q_vol = 0 everywhere.
 
         find_min_h_active: T_center = T_inf < T_limit → passive sufficient → nan.
-        find_min_cooling_years: g(0) = −Q_allowable < 0 → immediately safe → 0.0.
+        find_total_decay_years: g(0) = −Q_allowable < 0 → immediately safe → 0.0.
         """
         props = _make_props()
         cfg   = _make_cfg()
@@ -77,17 +80,19 @@ class TestEdgeCases:
             properties=props,
             rho_base=_RHO,
             cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
         )
         assert np.isnan(h_result), (
             f"loading=0 should give nan for h_min, got {h_result}"
         )
 
-        t_result = find_min_cooling_years(
+        t_result = find_total_decay_years(
             R=0.2,
             loading_fraction=0.0,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
+            surface_limit_C=_SURFACE_C,
             cfg=cfg,
         )
         assert t_result == 0.0, (
@@ -111,6 +116,8 @@ class TestEdgeCases:
                 properties=props,
                 rho_base=_RHO,
                 cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
             )
         except Exception as exc:
             pytest.fail(
@@ -118,17 +125,17 @@ class TestEdgeCases:
             )
 
         try:
-            t_result = find_min_cooling_years(
+            t_result = find_total_decay_years(
                 R=0.2,
                 loading_fraction=0.999,
                 properties=props,
                 rho_base=_RHO,
-                repo_type="Bentonite",
+                surface_limit_C=_SURFACE_C,
                 cfg=cfg,
             )
         except Exception as exc:
             pytest.fail(
-                f"find_min_cooling_years raised {type(exc).__name__} for loading=0.999: {exc}"
+                f"find_total_decay_years raised {type(exc).__name__} for loading=0.999: {exc}"
             )
 
         # At least one result should be inf (can't cool such an extreme case)
@@ -141,17 +148,17 @@ class TestEdgeCases:
         Surface limit < ambient temperature → Q_allowable < 0.
 
         g(t) = Q_vol(t) − Q_allowable ≥ 0 − negative > 0 for all t
-        → find_min_cooling_years returns inf.
+        → find_total_decay_years returns inf.
         """
         props = _make_props()
-        cfg   = _make_cfg(surface_C=30.0, ambient_C=40.0)  # surface 30°C < ambient 40°C
+        cfg   = _make_cfg(ambient_C=40.0)
 
-        result = find_min_cooling_years(
+        result = find_total_decay_years(
             R=0.2,
             loading_fraction=0.1,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
+            surface_limit_C=30.0,      # below the 40 °C ambient
             cfg=cfg,
         )
         assert np.isinf(result) and result > 0, (
@@ -174,6 +181,8 @@ class TestEdgeCases:
                 properties=props,
                 rho_base=_RHO,
                 cfg=cfg,
+            ambient_C=40.0,
+            cooling_years=0.0,
             )
         except Exception as exc:
             pytest.fail(
@@ -191,12 +200,12 @@ class TestEdgeCases:
         props = _make_props(decay_func=lambda t: 50.0 * np.exp(-0.3 * t))
         cfg   = _make_cfg()
 
-        result = find_min_cooling_years(
+        result = find_total_decay_years(
             R=0.3,
             loading_fraction=0.1,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
+            surface_limit_C=_SURFACE_C,
             cfg=cfg,
         )
         assert np.isfinite(result), (
@@ -208,7 +217,7 @@ class TestEdgeCases:
         """
         λ ≈ 1/100 000 yr⁻¹ (half-life ≈ 69 000 yr) → Q barely decreases.
 
-        find_min_cooling_years should return inf quickly
+        find_total_decay_years should return inf quickly
         (g(T_SEARCH_MAX=1000 yr) >> 0) without timing out.
         """
         import time
@@ -217,12 +226,12 @@ class TestEdgeCases:
         cfg   = _make_cfg()
 
         t_start = time.monotonic()
-        result  = find_min_cooling_years(
+        result  = find_total_decay_years(
             R=0.3,
             loading_fraction=0.3,
             properties=props,
             rho_base=_RHO,
-            repo_type="Bentonite",
+            surface_limit_C=_SURFACE_C,
             cfg=cfg,
         )
         elapsed = time.monotonic() - t_start

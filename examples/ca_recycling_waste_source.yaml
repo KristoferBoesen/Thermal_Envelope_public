@@ -1,0 +1,21 @@
+# Waste stream paired with the CA_Recycling_Bg-CaF2 matrix.
+# Recycling / Optimistic scenario, Thorium MSR.
+#
+# Transcribed from the source analysis — this is NOT preprocessor output.
+# To regenerate from your own inventory:
+#   decay-preprocessor --inventory <your.csv> --chain <chain.xml> \
+#       --sample-mass <kg> --total-mass <kg> --output-dir results/decay
+#
+# Use by setting in solver_config.yaml:
+#   waste_source: examples/ca_recycling_waste_source.yaml
+# then:
+#   aethon --material CA_Recycling_Bg-CaF2
+
+decay_terms:
+- [982.77, 24.18]
+- [733.59, 3.88]
+- [44.57, 0.02]
+
+# The mass this decay curve is normalised by, recorded as provenance.
+# Campaign size is set separately, in solver_config.yaml under 'campaign'.
+sample_mass_kg: 115.984

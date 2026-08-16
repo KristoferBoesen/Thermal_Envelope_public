@@ -1,0 +1,25 @@
+# Waste stream paired with the CA_Emergency_Bg-CaF2-Zr matrix.
+# Emergency / Accident / Pessimistic scenario, Thorium MSR.
+#
+# Transcribed from the source analysis — this is NOT preprocessor output.
+# To regenerate from your own inventory:
+#   decay-preprocessor --inventory <your.csv> --chain <chain.xml> \
+#       --sample-mass <kg> --total-mass <kg> --output-dir results/decay
+#
+# Use by setting in solver_config.yaml:
+#   waste_source: examples/ca_emergency_waste_source.yaml
+# then:
+#   aethon --material CA_Emergency_Bg-CaF2-Zr
+#
+# Note the far lower initial specific power than the Recycling stream
+# (54.8 vs 1761 W/kg at t=0). These scenarios differ in the waste itself,
+# not only in the matrix it is immobilised in — pair them accordingly.
+
+decay_terms:
+- [39.31, 5.82]
+- [13.52, 1.06]
+- [1.96, 0.02]
+
+# The mass this decay curve is normalised by, recorded as provenance.
+# Campaign size is set separately, in solver_config.yaml under 'campaign'.
+sample_mass_kg: 115.984

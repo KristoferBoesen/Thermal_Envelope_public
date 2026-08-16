@@ -2,7 +2,7 @@
 
 Fast tests (~1–5 s each) verify the CLI produces valid CSV output.
 The slow test (@pytest.mark.slow, ~30–60 s) exercises the full preprocessor
-pipeline with the real Optimistic_composition_5y.csv inventory.
+pipeline with the real MSR inventory shipped in examples/.
 
 Running only the fast tests::
 
@@ -33,7 +33,7 @@ from aethon.config_loader import load_config
 # ---------------------------------------------------------------------------
 _TEST_DIR      = Path(__file__).parent
 _REPO_ROOT     = _TEST_DIR.parent
-_INVENTORY_CSV = _TEST_DIR / "data" / "Optimistic_composition_5y.csv"
+_INVENTORY_CSV = _REPO_ROOT / "examples" / "msr_inventory_5y.csv"
 _CHAIN_XML     = _REPO_ROOT / "chain_endfb71_pwr.xml"
 
 
@@ -44,62 +44,141 @@ _CHAIN_XML     = _REPO_ROOT / "chain_endfb71_pwr.xml"
 class TestSmokeRun:
 
     @pytest.fixture(scope="class")
-    def result_dir_and_df(self, tmp_path_factory):
+    def run_dir(self, tmp_path_factory):
         """
-        Run main() once with a tiny grid (3 radii, 1 loading) and return the
-        output directory and the resulting DataFrame.
+        Run the CLI on the smallest grid that still produces a contour.
+
+        Every point costs a transient root-find of roughly a dozen FEM solves,
+        and this test exists to check the wiring rather than the physics, so
+        the grid is 3x3 - the least that a contour can be drawn through.
         """
         from aethon.__main__ import main
 
-        tmp_dir = tmp_path_factory.mktemp("smoke_results")
-        main([
-            "--no-plot",
+        tmp_dir = tmp_path_factory.mktemp("explore_results")
+        exit_code = main([
+            "--radii-min", "0.1",
+            "--radii-max", "0.3",
             "--radii-steps", "3",
-            "--loadings", "5",
+            "--loadings-min", "5",
+            "--loadings-max", "15",
+            "--loadings-steps", "3",
+            "--repo", "Salt",
+            "--archetype", "ForcedAir",
             "--output-dir", str(tmp_dir),
         ])
+        assert exit_code == 0
+        return tmp_dir
 
-        cfg       = load_config()
-        label     = cfg["waste_form_name"]
-        csv_name  = f"Design_Envelope_{label}_Bentonite.csv"
-        csv_path  = tmp_dir / csv_name
-        df        = pd.read_csv(csv_path) if csv_path.exists() else None
-        return tmp_dir, df, csv_path
+    @pytest.fixture(scope="class")
+    def results(self, run_dir):
+        label = load_config()["waste_form_name"]
+        return pd.read_csv(run_dir / f"explore_full_{label}.csv")
 
-    def test_smoke_run_no_plot(self, result_dir_and_df):
-        """main() runs without exception and produces a CSV file."""
-        _, _, csv_path = result_dir_and_df
-        assert csv_path.exists(), f"Expected CSV at {csv_path}"
+    def test_results_csv_written(self, results):
+        assert not results.empty
 
-    def test_csv_has_expected_columns(self, result_dir_and_df):
-        """Output CSV has required columns and at least one non-NaN entry."""
-        _, df, _ = result_dir_and_df
-        assert df is not None, "CSV was not produced"
-        required = {"Radius_m", "Loading_Pct", "Min_H_Active", "Min_Cooling_Years"}
-        assert required.issubset(df.columns), (
-            f"Missing columns; got {list(df.columns)}"
+    def test_reports_all_milestones(self, results):
+        """Every milestone and operating condition must reach the CSV."""
+        required = {
+            "Geology", "Archetype", "Material", "Radius_m", "Loading_Pct",
+            "N_canisters", "t_encap_yr", "t_coolers_off_yr", "t_active_yr",
+            "t_geo_yr", "Binding_At_Geo", "h_active", "T_ambient_active_C",
+            "h_passive", "T_ambient_passive_C", "Q_per_canister_W",
+            "Facility_Duty_W",
+        }
+        assert required.issubset(results.columns), (
+            f"missing: {required - set(results.columns)}"
         )
-        # At least one column should have a real value somewhere
-        assert not (df["Radius_m"].isna().all()), "Radius_m column is all NaN"
 
-    def test_h_min_increases_with_radius(self, result_dir_and_df):
+    def test_sweep_is_complete(self, results):
+        """3 radii x 3 loadings, no point dropped."""
+        assert len(results) == 9
+        assert results["t_geo_yr"].notna().all()
+
+    def test_milestones_are_ordered(self, results):
+        """t_encap <= t_coolers_off <= t_geo on every reported row."""
+        assert (results["t_coolers_off_yr"] <= results["t_geo_yr"] + 1e-6).all()
+        needs_cooling = results[results["t_active_yr"] > 0.0]
+        assert (
+            needs_cooling["t_encap_yr"]
+            <= needs_cooling["t_coolers_off_yr"] + 1e-6
+        ).all()
+
+    def test_only_requested_options_appear(self, results):
+        assert set(results["Geology"]) == {"Salt"}
+        assert set(results["Archetype"]) == {"ForcedAir"}
+
+    def test_both_maps_are_written(self, run_dir):
+        label = load_config()["waste_form_name"]
+        assert (run_dir / f"design_map_passive_{label}.png").exists()
+        assert (run_dir / f"design_map_encapsulation_{label}.png").exists()
+
+    def test_run_record_is_written(self, run_dir):
+        assert (run_dir / "run_config.yaml").exists()
+
+    def test_unknown_archetype_exits_nonzero(self, tmp_path):
+        """A typo in a technology name must fail cleanly, not crash."""
+        from aethon.__main__ import main
+
+        assert main([
+            "--no-plot", "--radii-steps", "2",
+            "--archetype", "Cryogenic",
+            "--output-dir", str(tmp_path),
+        ]) == 1
+
+
+class TestWasteSourceHandoff:
+
+    def test_preprocessor_output_feeds_the_solver(self, tmp_path):
         """
-        For a given loading, finite h_min values must be non-decreasing with R.
-
-        Physics: larger radius → greater thermal resistance → more cooling needed.
+        waste_source.yaml written by the preprocessor must be readable by
+        load_config and supply the decay curve.
         """
-        _, df, _ = result_dir_and_df
-        assert df is not None, "CSV was not produced"
+        from decay_preprocessor.run_preprocessor import write_waste_source
 
-        for loading, grp in df.groupby("Loading_Pct"):
-            grp = grp.sort_values("Radius_m")
-            finite_h = grp["Min_H_Active"].dropna().values
-            if len(finite_h) < 2:
-                continue   # need at least 2 finite values to check monotonicity
-            diffs = np.diff(finite_h)
-            assert (diffs >= -1e-6).all(), (
-                f"Loading {loading}%: h_min decreased with R — diffs = {diffs}"
-            )
+        write_waste_source(
+            path=tmp_path / "waste_source.yaml",
+            terms=[(500.0, 4.0), (30.0, 0.3)],
+            sample_mass_kg=100.0,
+            r2=0.9995,
+            rmse=1.2,
+        )
+
+        reference = _TEST_DIR / "data" / "reference_config.yaml"
+        config_text = reference.read_text(encoding="utf-8")
+        config_text += "\nwaste_source: waste_source.yaml\n"
+        (tmp_path / "solver_config.yaml").write_text(config_text, encoding="utf-8")
+
+        cfg = load_config(tmp_path / "solver_config.yaml")
+
+        assert cfg["waste_form"]["decay"](0.0) == pytest.approx(530.0)
+
+    def test_campaign_mass_comes_only_from_the_config(self, tmp_path):
+        """
+        The waste stream describes specific power, which is intensive and says
+        nothing about how much waste exists. Campaign size therefore has one
+        home - the config - and a waste_source file must not displace it.
+        """
+        from decay_preprocessor.run_preprocessor import write_waste_source
+
+        write_waste_source(
+            path=tmp_path / "waste_source.yaml",
+            terms=[(500.0, 4.0)],
+            sample_mass_kg=100.0,
+            r2=0.999,
+            rmse=1.0,
+        )
+
+        reference = _TEST_DIR / "data" / "reference_config.yaml"
+        config_text = reference.read_text(encoding="utf-8")
+        config_text += "\nwaste_source: waste_source.yaml\n"
+        (tmp_path / "solver_config.yaml").write_text(config_text, encoding="utf-8")
+
+        cfg = load_config(tmp_path / "solver_config.yaml")
+
+        # 116.0 is the reference config's campaign value, not the 100.0 the
+        # preprocessor normalised by
+        assert cfg["total_waste_mass_kg"] == pytest.approx(116.0)
 
 
 # ---------------------------------------------------------------------------
